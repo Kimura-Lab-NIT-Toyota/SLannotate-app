@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { SLannotateAppStack } from '../lib/s_lannotate-app-stack';
+import { SLannotateAppStack } from '../lib/slannotate-app-stack';
 
 const app = new cdk.App();
 new SLannotateAppStack(app, 'SLannotateAppStack', {

@@ -1,8 +1,8 @@
 {
-  "name": "s_lannotate-app",
+  "name": "slannotate-app",
   "version": "0.1.0",
   "bin": {
-    "s_lannotate-app": "bin/s_lannotate-app.js"
+    "slannotate-app": "bin/slannotate-app.js"
   },
   "scripts": {
     "build": "tsc",

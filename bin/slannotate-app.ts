@@ -2,6 +2,7 @@
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { SLannotateFrontStack } from '../lib/slannotate-front-stack';
+import { SLannotateApiStack } from '../lib/slannotate-api-stack';
 
 const app = new cdk.App();
 new SLannotateFrontStack(app, 'SLannotateFrontStack', {
@@ -19,3 +20,5 @@ new SLannotateFrontStack(app, 'SLannotateFrontStack', {
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
+
+new SLannotateApiStack(app, 'SLannotateApiStack', {});

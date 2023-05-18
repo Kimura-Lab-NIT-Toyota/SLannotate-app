@@ -23,12 +23,7 @@ export class CognitoAuthStack extends Stack {
 
         userPool.addClient("SLannotateUserPoolClient", {
             userPoolClientName: "SLannotateUserPoolClient",
-            generateSecret: false,
-            oAuth:{
-                flows: { authorizationCodeGrant: true },
-                callbackUrls:["https://d2guuix4ia1xx3.cloudfront.net"]
-            }
-
+            authFlows: { adminUserPassword: true},
         });
 
         userPool.addDomain("SLannotateUserPoolDomain", {

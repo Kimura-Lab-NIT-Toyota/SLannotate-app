@@ -1,10 +1,13 @@
 import * as cdk from 'aws-cdk-lib';
-import { ApiGateway } from 'aws-cdk-lib/aws-events-targets';
-import { RemovalPolicy } from 'aws-cdk-lib';
+import { RemovalPolicy,StackProps,aws_cognito } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+//アプリケーションのAPIを管理するスタック。
 
+interface apiProps extends StackProps{
+    userPool:aws_cognito.UserPool;
+}
 export class SLannotateApiStack extends cdk.Stack {
-    constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    constructor(scope: Construct, id: string, props: apiProps) {
         super(scope, id, props);
 
         //リクエストを実際に処理するLambda
@@ -39,7 +42,7 @@ export class SLannotateApiStack extends cdk.Stack {
         })
         videoBucket.grantWrite(uploadRole);
 
-        //APIGateway
+        //API作成
         const api = new cdk.aws_apigateway.RestApi(this, 'SLannotateApi', {
             restApiName: 'SLannotateApi',
             description: 'SLannotate API',
@@ -48,7 +51,11 @@ export class SLannotateApiStack extends cdk.Stack {
             },
             binaryMediaTypes: ['*/*'],
         });
-
+        //authorizerを作成(auth-stackで作成したUserPoolを呼び出す)
+        const userPool = props.userPool;
+        const authorizer = new cdk.aws_apigateway.CognitoUserPoolsAuthorizer(this, 'SLannotateApiAuthorizer', {
+            cognitoUserPools: [userPool],
+        });
         //LambdaとAPIの紐付け
         /* ~/users -
                     |- {userId} - GET:User details
@@ -70,8 +77,9 @@ export class SLannotateApiStack extends cdk.Stack {
         //存在可否がわかるように、URLを返す(なければ空文字)とかでもよいかも
         //fileName.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFileByFileIdLambda));
         //Upload FileはLambdaを介さないので、Lambdaとの紐付けはしなくてよい
-        annotate.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda));
-        annotate.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
+        //これもLambdaなしで行けそう
+        annotate.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda),{authorizer:authorizer});
+        annotate.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda),{authorizer:authorizer});
 
         //UploadはLambdaを使わなくても行けるらしい
         const integrationResponses = [{
@@ -107,6 +115,7 @@ export class SLannotateApiStack extends cdk.Stack {
             }
         }),
             {
+                authorizer:authorizer,
                 requestParameters: {
                     'method.request.header.Content-Type': true,
                     'method.request.path.userId': true,

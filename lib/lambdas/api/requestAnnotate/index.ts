@@ -1,21 +1,20 @@
 import { type } from "os";
 
 export const handler = (event: any, context: any, callback: any) => {
-    const params: Params = JSON.parse(event.body);
+    const params = event.pathParameters as Params;
     let statusCode = 200;
     let body = "";
-    if (!params.targetId){
+    if (!params.userId || !params.fileName) {
         callback(null, {
             "statusCode": 400,
             "body": JSON.stringify({
-                "message": "targetId is required",
+                "message": "userId and fileName are required",
             })
         });
-        return;
-    }else{
+    } else {
         //TODO:annotate
         body = JSON.stringify({
-            "message": `got ${params.targetId}`,
+            "message": `got ${params}`,
         })
     }
     const res = {
@@ -26,5 +25,6 @@ export const handler = (event: any, context: any, callback: any) => {
 };
 
 type Params = {
-    targetId: string;
+    userId: string,
+    fileName: string,
 }

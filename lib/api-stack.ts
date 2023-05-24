@@ -88,7 +88,7 @@ export class SLannotateApiStack extends cdk.Stack {
             'method.response.header.Access-Control-Allow-Origin': "'*'",
         }
 
-        const defaultResponseParametersOfCORS = {
+        const defaultMethodResponseParametersOfCORS = {
             'method.response.header.Access-Control-Allow-Headers': true,
             'method.response.header.Access-Control-Allow-Methods': true,
             'method.response.header.Access-Control-Allow-Origin': true,
@@ -147,11 +147,11 @@ export class SLannotateApiStack extends cdk.Stack {
                     },
                     {
                         statusCode: '400',
-                        responseParameters: defaultResponseParametersOfCORS,
+                        responseParameters: defaultMethodResponseParametersOfCORS,
                     },
                     {
                         statusCode: '500',
-                        responseParameters: defaultResponseParametersOfCORS,
+                        responseParameters: defaultMethodResponseParametersOfCORS,
                     }
                 ]
             },
@@ -209,11 +209,11 @@ export class SLannotateApiStack extends cdk.Stack {
                     },
                     {
                         statusCode: '400',
-                        responseParameters: defaultResponseParametersOfCORS,
+                        responseParameters: defaultMethodResponseParametersOfCORS,
                     },
                     {
                         statusCode: '500',
-                        responseParameters: defaultResponseParametersOfCORS,
+                        responseParameters: defaultMethodResponseParametersOfCORS,
                     }
                 ]
             },

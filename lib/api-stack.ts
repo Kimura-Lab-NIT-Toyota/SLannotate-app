@@ -1,36 +1,20 @@
 import * as cdk from 'aws-cdk-lib';
-import { RemovalPolicy,StackProps,aws_cognito } from 'aws-cdk-lib';
+import { RemovalPolicy, StackProps, aws_cognito } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 //アプリケーションのAPIを管理するスタック。
 
-interface apiProps extends StackProps{
-    userPool:aws_cognito.UserPool;
+interface apiProps extends StackProps {
+    userPool: aws_cognito.UserPool;
 }
 export class SLannotateApiStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props: apiProps) {
         super(scope, id, props);
 
-        //リクエストを実際に処理するLambda
-        const getAnnotateResultLambda = new cdk.aws_lambda.Function(this, 'GetAnnotateResultLambda', {
-            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/api/getAnnotateResult'),
-            runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
-            handler: 'index.handler',
-            timeout: cdk.Duration.seconds(300),
-        });
-
-        const requestAnnotateLambda = new cdk.aws_lambda.Function(this, 'RequestAnnotateLambda', {
-            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/api/requestAnnotate'),
-            runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
-            handler: 'index.handler',
-            timeout: cdk.Duration.seconds(300),
-        });
-
-        const uploadTargetMovieLambda = new cdk.aws_lambda.Function(this, 'UploadTargetMovieLambda', {
-            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/api/uploadTargetMovie'),
-            runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
-            handler: 'index.handler',
-            timeout: cdk.Duration.seconds(300),
-        });
+        // lambdas/api/${funcName}のソースを使うので、funcNameはソースのフォルダ名と一致させる必要がある
+        const getAnnotateResultLambda = createLambda(this, 'getAnnotateResult');
+        const requestAnnotateLambda = createLambda(this, 'requestAnnotate')
+        const uploadTargetMovieLambda = createLambda(this, 'uploadTargetMovie');
+        
         //アップロードされた動画を格納するバケット
         const videoBucket = new cdk.aws_s3.Bucket(this, "SLannotateVideoBucket", {
             removalPolicy: RemovalPolicy.DESTROY,
@@ -78,8 +62,8 @@ export class SLannotateApiStack extends cdk.Stack {
         //fileName.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFileByFileIdLambda));
         //Upload FileはLambdaを介さないので、Lambdaとの紐付けはしなくてよい
         //これもLambdaなしで行けそう
-        annotate.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda),{authorizer:authorizer});
-        annotate.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda),{authorizer:authorizer});
+        annotate.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda), { authorizer: authorizer });
+        annotate.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda), { authorizer: authorizer });
 
         //UploadはLambdaを使わなくても行けるらしい
         const integrationResponses = [{
@@ -115,7 +99,7 @@ export class SLannotateApiStack extends cdk.Stack {
             }
         }),
             {
-                authorizer:authorizer,
+                authorizer: authorizer,
                 requestParameters: {
                     'method.request.header.Content-Type': true,
                     'method.request.path.userId': true,
@@ -124,4 +108,14 @@ export class SLannotateApiStack extends cdk.Stack {
             }
         );
     }
+}
+
+function createLambda(stack: cdk.Stack, funcName: string): cdk.aws_lambda.Function {
+    return new cdk.aws_lambda.Function(stack, funcName, {
+        code: cdk.aws_lambda.Code.fromAsset(`lib/lambdas/api/${funcName}`),
+        runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
+        handler: 'index.handler',
+        timeout: cdk.Duration.seconds(300),
+    });
+
 }

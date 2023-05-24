@@ -1,4 +1,4 @@
-import { Stack, aws_cognito, RemovalPolicy,CfnOutput} from 'aws-cdk-lib';
+import { Stack, aws_cognito, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 //ユーザー認証基盤のスタック
 //MAU5万人まで無料、その後はだいたい200人ごとに1USD
 export class CognitoAuthStack extends Stack {
@@ -23,14 +23,25 @@ export class CognitoAuthStack extends Stack {
 
         userPool.addClient("SLannotateUserPoolClient", {
             userPoolClientName: "SLannotateUserPoolClient",
-            authFlows: { adminUserPassword: true},
+            generateSecret: false,
+            oAuth: {
+                callbackUrls: ["https://d2guuix4ia1xx3.cloudfront.net/"],
+                flows: {
+                    implicitCodeGrant: true,
+                    authorizationCodeGrant: true,
+                },
+                scopes: [
+                    aws_cognito.OAuthScope.OPENID,
+                ],
+            },
+            authFlows: { adminUserPassword: true },
         });
 
         userPool.addDomain("SLannotateUserPoolDomain", {
             cognitoDomain: {
                 domainPrefix: "slannotate",
             },
-            
+
         });
         //apiで参照できるように出力する
         this.userPool = userPool;

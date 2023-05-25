@@ -55,10 +55,11 @@ export class SLannotateApiStack extends cdk.Stack {
                     |    |- files - GET:List of files
                     |    |    |- {fileName} - GET:File details
                     |    |    |- {fileName} - PUT:Upload File 
+                    |    |    |- {fileName} - DELETE:DELETE File  
                     |    |    |    |- annotate - GET:Annotate result
                     |    |    |    |- annotate - POST:Annotate request
         */
-    
+        //TOCONSIDER:アップロードしてアノテートしないことはないので、アップロードされたら暗黙的に(?)処理してもよいのではないか
         const users = api.root.addResource('users');
         const userId = users.addResource('{userId}');
         const files = userId.addResource('files');
@@ -77,9 +78,11 @@ export class SLannotateApiStack extends cdk.Stack {
         const getAnnotateResultLambda = createLambda(this, 'getAnnotateResult');
         const requestAnnotateLambda = createLambda(this, 'requestAnnotate');
 
+        //ここからAPIの各メソッド
         annotate.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda));
         annotate.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
 
+        
         const defaultIntegrationResponsesOfCORS = {
             'method.response.header.Access-Control-Allow-Headers':
                 "'Content-Type,Authorization'",
@@ -93,18 +96,18 @@ export class SLannotateApiStack extends cdk.Stack {
             'method.response.header.Access-Control-Allow-Methods': true,
             'method.response.header.Access-Control-Allow-Origin': true,
         }
-        //UploadはLambdaを使わなくても行けるらしい
+
         fileName.addMethod('PUT', new cdk.aws_apigateway.AwsIntegration({
             service: 's3',
             integrationHttpMethod: 'PUT',
             path: `${videoBucket.bucketName}/{folder}/{object}`,
             options: {
                 credentialsRole: S3Role,
-                // S3のパスとAPIのリクエストパスを紐付ける
                 requestParameters: {
                     'integration.request.header.Content-Type': 'method.request.header.Content-Type',
                     'integration.request.path.folder': 'method.request.path.userId',
                     'integration.request.path.object': 'method.request.path.fileName',
+                    
                 },
                 integrationResponses: [{
                     statusCode: '200',

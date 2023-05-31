@@ -79,22 +79,17 @@ export class SLannotateApiStack extends cdk.Stack {
         const getAnnotateResultLambda = createLambda(this, 'getAnnotateResult');
         const requestAnnotateLambda = createLambda(this, 'requestAnnotate');
         //動画の前処理の設定(MP4 to CSV, Record to DDB)
-        const DDBExecRole = new cdk.aws_iam.Role(this, "SLannotateTableRWRole", {
-            assumedBy: new cdk.aws_iam.ServicePrincipal("lambda.amazonaws.com"),
-            path: "/",
-        })
         //import ddb table
         const table = props.table;
-        table.grantReadWriteData(DDBExecRole);
-
         const videoPreprocessLambda = new cdk.aws_lambda.Function(this, 'videoPreprocess', {
             code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/util/videoPreprocess'),
             runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
             handler: 'index.handler',
-            role:DDBExecRole,
+            logRetention:  cdk.aws_logs.RetentionDays.ONE_MONTH,
             timeout: cdk.Duration.seconds(300),
         });
         
+        table.grantReadWriteData(videoPreprocessLambda);
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda));
 
         //ここからAPIの各メソッド
@@ -248,6 +243,7 @@ function createLambda(stack: cdk.Stack, funcName: string): cdk.aws_lambda.Functi
         code: cdk.aws_lambda.Code.fromAsset(`lib/lambdas/api/${funcName}`),
         runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
         handler: 'index.handler',
-        timeout: cdk.Duration.seconds(300),
+        logRetention:  cdk.aws_logs.RetentionDays.ONE_MONTH,
+        timeout: cdk.Duration.seconds(1),
     });
 }

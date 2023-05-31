@@ -6,14 +6,14 @@ export class TableStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
-        const table = new cdk.aws_dynamodb.Table(this, 'Table', {
+        const table = new cdk.aws_dynamodb.Table(this, 'SLannotateTable', {
             partitionKey: {
                 name: 'user_id',
                 type: cdk.aws_dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'video_id',
-                type: cdk.aws_dynamodb.AttributeType.NUMBER
+                type: cdk.aws_dynamodb.AttributeType.STRING
             },
             tableName: 'video_details_table',
         });

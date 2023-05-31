@@ -1,10 +1,10 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
-export const handler = function (event: any, context: any, callback: any) {
-    const tableName = process.env.TABLE_NAME || 'video_details_table';
+import { DynamoDBClient} from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, PutCommand} from "@aws-sdk/lib-dynamodb";
+export const handler =  function (event: any, context: any, callback: any) {
+    const tableName = 'video_details_table';
     const region = process.env.REGION || 'ap-northeast-1';
 
-    const key = event.Records[0].s3.object.key;
+    const key = <string> event.Records[0].s3.object.key;
     if (key.split('/').length != 2) {
         console.log("Process exited because invalid fileName or userName. Check if they doesn't include '/'");
         return;
@@ -20,17 +20,16 @@ export const handler = function (event: any, context: any, callback: any) {
         const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
         //TODO:Check if user exists. When not,skip it.
         const putItem = async ()=>{
-            const params = {
-                TableName: 'slannotate-user',
-                Item:{
-                    'user_id': userId,
-                    'video_id': fileName,
-                    'status': 'PROGRESS'
-                }
-            }
-    
             try{
-                const res = await ddbDocClient.send(new PutCommand(params));
+                const res = await ddbDocClient.send(new PutCommand({
+                    TableName: tableName,
+                    Item:{
+                        'user_id': userId,
+                        'video_id': fileName,
+                        'status': 'PROGRESS',
+                        'created_at': Date.now(),
+                    },
+                }));
                 console.log(res);//TODO:Remove this line
             }catch(err){
                 console.log(err);

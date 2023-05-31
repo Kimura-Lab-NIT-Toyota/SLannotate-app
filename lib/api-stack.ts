@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 
 interface apiProps extends StackProps {
     userPool: aws_cognito.UserPool;
+    table: cdk.aws_dynamodb.Table;
 }
 export class SLannotateApiStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props: apiProps) {
@@ -77,12 +78,30 @@ export class SLannotateApiStack extends cdk.Stack {
         // lambdas/api/${funcName}のソースを使うので、funcNameはソースのフォルダ名と一致させる必要がある
         const getAnnotateResultLambda = createLambda(this, 'getAnnotateResult');
         const requestAnnotateLambda = createLambda(this, 'requestAnnotate');
+        //動画の前処理の設定(MP4 to CSV, Record to DDB)
+        const DDBExecRole = new cdk.aws_iam.Role(this, "SLannotateTableRWRole", {
+            assumedBy: new cdk.aws_iam.ServicePrincipal("lambda.amazonaws.com"),
+            path: "/",
+        })
+        //import ddb table
+        const table = props.table;
+        table.grantReadWriteData(DDBExecRole);
+
+        const videoPreprocessLambda = new cdk.aws_lambda.Function(this, 'videoPreprocess', {
+            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/util/videoPreprocess'),
+            runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
+            handler: 'index.handler',
+            role:DDBExecRole,
+            timeout: cdk.Duration.seconds(300),
+        });
+        
+        videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda));
 
         //ここからAPIの各メソッド
         annotate.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda));
         annotate.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
 
-        
+
         const defaultIntegrationResponsesOfCORS = {
             'method.response.header.Access-Control-Allow-Headers':
                 "'Content-Type,Authorization'",
@@ -107,7 +126,7 @@ export class SLannotateApiStack extends cdk.Stack {
                     'integration.request.header.Content-Type': 'method.request.header.Content-Type',
                     'integration.request.path.folder': 'method.request.path.userId',
                     'integration.request.path.object': 'method.request.path.fileName',
-                    
+
                 },
                 integrationResponses: [{
                     statusCode: '200',
@@ -231,5 +250,4 @@ function createLambda(stack: cdk.Stack, funcName: string): cdk.aws_lambda.Functi
         handler: 'index.handler',
         timeout: cdk.Duration.seconds(300),
     });
-
 }

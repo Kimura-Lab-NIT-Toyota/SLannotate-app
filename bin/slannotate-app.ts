@@ -9,7 +9,8 @@ const app = new cdk.App();
 
 const auth = new CognitoAuthStack(app, 'SLannotateAuthStack', {});
 const front = new SLannotateFrontStack(app, 'SLannotateFrontStack', {});
+const table = new TableStack(app, 'SLannotateTableStack', {});
 const api = new SLannotateApiStack(app, 'SLannotateApiStack', {
     userPool: auth.userPool,
+    table: table.table
 });
-const table = new TableStack(app, 'SLannotateTableStack', {});

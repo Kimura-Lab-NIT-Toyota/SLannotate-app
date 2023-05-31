@@ -1,4 +1,3 @@
-import { type } from "os";
 
 export const handler = (event: any, context: any, callback: any) => {
     const params = event.pathParameters as Params;

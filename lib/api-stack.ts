@@ -104,7 +104,6 @@ export class SLannotateApiStack extends cdk.Stack {
             'method.response.header.Access-Control-Allow-Methods': true,
             'method.response.header.Access-Control-Allow-Origin': true,
         }
-        createGETannotate(this, annotate);
         createPOSTannotate(this, annotate);
         createGETFileName(fileName, DDBReadRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createPUTFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
@@ -112,10 +111,7 @@ export class SLannotateApiStack extends cdk.Stack {
 
     }
 }
-function createGETannotate(stack: cdk.Stack, resource: cdk.aws_apigateway.Resource) {
-    const getAnnotateResultLambda = createLambda(stack, 'getAnnotateResult');
-    resource.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda));
-}
+
 function createPOSTannotate(stack: cdk.Stack, resource: cdk.aws_apigateway.Resource) {
     const requestAnnotateLambda = createLambda(stack, 'requestAnnotate');
     resource.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
@@ -129,15 +125,15 @@ function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole
             credentialsRole: DDBoperateRole,
             requestTemplates: {
                 'application/json': JSON.stringify({
-                    "Key":{
-                        "user_id":{
-                            "S":"$input.params('userId')"
+                    "Key": {
+                        "user_id": {
+                            "S": "$input.params('userId')"
                         },
-                        "video_id":{
-                            "S":"$input.params('fileName')"
+                        "video_id": {
+                            "S": "$input.params('fileName')"
                         }
                     },
-                    "TableName":`${tableName}`
+                    "TableName": `${tableName}`
                 })
             },
             integrationResponses: [{

@@ -16,12 +16,12 @@ export class SLannotateApiStack extends cdk.Stack {
             removalPolicy: RemovalPolicy.DESTROY,
         });
         //APIからS3を触るためのロール作成
-        const S3Role = new cdk.aws_iam.Role(this, "SLannotateVideoBucketUploadRole", {
+        const S3WriteDeleteRole = new cdk.aws_iam.Role(this, "SLannotateVideoBucketWDRole", {
             assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
             path: "/",
         })
-        videoBucket.grantWrite(S3Role);
-        videoBucket.grantDelete(S3Role);
+        videoBucket.grantWrite(S3WriteDeleteRole);
+        videoBucket.grantDelete(S3WriteDeleteRole);
 
         //API作成
         //authorizerを作成(auth-stackで作成したUserPoolを呼び出す)
@@ -54,9 +54,9 @@ export class SLannotateApiStack extends cdk.Stack {
         /* ~/users -
                     |- {userId} - GET:User details
                     |    |- files - GET:List of files
-                    |    |    |- {fileName} - GET:File details
-                    |    |    |- {fileName} - PUT:Upload File 
-                    |    |    |- {fileName} - DELETE:DELETE File  
+                    |    |    |- {fileName} - GET:File details ✓
+                    |    |    |- {fileName} - PUT:Upload File ✓
+                    |    |    |- {fileName} - DELETE:DELETE File  ✓
                     |    |    |    |- annotate - GET:Annotate result
                     |    |    |    |- annotate - POST:Annotate request
         */
@@ -82,7 +82,11 @@ export class SLannotateApiStack extends cdk.Stack {
             logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
             timeout: cdk.Duration.seconds(300),
         });
-
+        const DDBReadRole = new cdk.aws_iam.Role(this, 'SKabbitateDDBReadRoleForAPI', {
+            assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
+            path: "/",
+        })
+        table.grantReadData(DDBReadRole);
         table.grantReadWriteData(videoPreprocessLambda);
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda));
 
@@ -100,20 +104,74 @@ export class SLannotateApiStack extends cdk.Stack {
             'method.response.header.Access-Control-Allow-Methods': true,
             'method.response.header.Access-Control-Allow-Origin': true,
         }
-        createGETannotate(this,annotate);
-        createPOSTannotate(this,annotate);
-        createPUTFileName(fileName, S3Role, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
-        createDELETEFileName(fileName, S3Role, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
+        createGETannotate(this, annotate);
+        createPOSTannotate(this, annotate);
+        createGETFileName(fileName, DDBReadRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
+        createPUTFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
+        createDELETEFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
     }
 }
-function createGETannotate(stack: cdk.Stack,resource:cdk.aws_apigateway.Resource) {
+function createGETannotate(stack: cdk.Stack, resource: cdk.aws_apigateway.Resource) {
     const getAnnotateResultLambda = createLambda(stack, 'getAnnotateResult');
     resource.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda));
 }
-function createPOSTannotate(stack: cdk.Stack,resource:cdk.aws_apigateway.Resource) {
+function createPOSTannotate(stack: cdk.Stack, resource: cdk.aws_apigateway.Resource) {
     const requestAnnotateLambda = createLambda(stack, 'requestAnnotate');
     resource.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
+}
+function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
+    const tableName = process.env.TableName || "video_details_table"
+    fileName.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
+        service: 'dynamodb',
+        action: 'GetItem',
+        options: {
+            credentialsRole: DDBoperateRole,
+            requestTemplates: {
+                'application/json': JSON.stringify({
+                    "Key":{
+                        "user_id":{
+                            "S":"$input.params('userId')"
+                        },
+                        "video_id":{
+                            "S":"$input.params('fileName')"
+                        }
+                    },
+                    "TableName":`${tableName}`
+                })
+            },
+            integrationResponses: [{
+                statusCode: '200',
+                responseTemplates: {
+                    'application/json': `{
+                        "status": "$input.path('$').Item.status.S",
+                        "result": $input.path('$').Item.result.L,
+                      }`
+                }
+            }]
+        }
+    }), {
+        methodResponses: [
+            {
+                statusCode: '200',
+                responseParameters: {
+                    'method.response.header.Content-Type': true,
+                    'method.response.header.Access-Control-Allow-Headers': true,
+                    'method.response.header.Access-Control-Allow-Methods': true,
+                    'method.response.header.Access-Control-Allow-Origin': true,
+                }
+            },
+            {
+                statusCode: '400',
+                responseParameters: methodResponse,
+            },
+            {
+                statusCode: '500',
+                responseParameters: methodResponse,
+            }
+        ]
+    }
+    )
 }
 function createDELETEFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
     fileName.addMethod('DELETE', new cdk.aws_apigateway.AwsIntegration({

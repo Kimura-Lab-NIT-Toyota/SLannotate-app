@@ -90,7 +90,7 @@ export class SLannotateApiStack extends cdk.Stack {
         table.grantReadWriteData(videoPreprocessLambda);
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda));
 
-        //ここからAPIの各メソッド
+
         const defaultIntegrationResponsesOfCORS = {
             'method.response.header.Access-Control-Allow-Headers':
                 "'Content-Type,Authorization'",
@@ -104,19 +104,76 @@ export class SLannotateApiStack extends cdk.Stack {
             'method.response.header.Access-Control-Allow-Methods': true,
             'method.response.header.Access-Control-Allow-Origin': true,
         }
-        createPOSTannotate(this, annotate);
-        createGETFileName(fileName, DDBReadRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
+        //ここからAPIの各メソッド
+        createGETFiles(files, DDBReadRole, defaultMethodResponseParametersOfCORS);
+
+        createGETFileName(fileName, DDBReadRole, defaultMethodResponseParametersOfCORS);
         createPUTFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createDELETEFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
+        createPOSTannotate(this, annotate);
     }
 }
 
-function createPOSTannotate(stack: cdk.Stack, resource: cdk.aws_apigateway.Resource) {
-    const requestAnnotateLambda = createLambda(stack, 'requestAnnotate');
-    resource.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
+function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, methodResponse: any) {
+    const tableName = process.env.TableName || "video_details_table"
+    resource.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
+        service: 'dynamodb',
+        action: 'Query',
+        options: {
+            credentialsRole: DDBoperateRole,
+            requestTemplates: {
+                'application/json': JSON.stringify({
+                    "KeyConditionExpression": "user_id = :u",
+                    "ExpressionAttributeValues": {
+                        ":u": { "S": "$input.params('userId')" }
+                    },
+                    "TableName": `${tableName}`
+                })
+            },
+            integrationResponses: [{
+                statusCode: '200',
+                responseTemplates: {//To remove attribute(like "S" or "N"), marshal with VTL.
+                    'application/json': `
+                    #set($input = $input.path('$'))
+                    {
+                        "videos":[
+                            #foreach($elem in $input.Items){
+                                "userId": "$elem.user_id.S",
+                                "videoId": "$elem.video_id.S",
+                                "status": "$elem.status.S",
+                                "result": "$elem.result.L",
+                            }#if($foreach.hasNext),#end
+                            #end
+                        ]
+                    }`
+                }
+            }]
+        }
+    }), {
+        methodResponses: [
+            {
+                statusCode: '200',
+                responseParameters: {
+                    'method.response.header.Content-Type': true,
+                    'method.response.header.Access-Control-Allow-Headers': true,
+                    'method.response.header.Access-Control-Allow-Methods': true,
+                    'method.response.header.Access-Control-Allow-Origin': true,
+                }
+            },
+            {
+                statusCode: '400',
+                responseParameters: methodResponse,
+            },
+            {
+                statusCode: '500',
+                responseParameters: methodResponse,
+            }
+        ]
+    }
+    )
 }
-function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
+function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, methodResponse: any) {
     const tableName = process.env.TableName || "video_details_table"
     fileName.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
         service: 'dynamodb',
@@ -297,6 +354,12 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole:
         },
     );
 }
+
+function createPOSTannotate(stack: cdk.Stack, resource: cdk.aws_apigateway.Resource) {
+    const requestAnnotateLambda = createLambda(stack, 'requestAnnotate');
+    resource.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
+}
+
 function createLambda(stack: cdk.Stack, funcName: string): cdk.aws_lambda.Function {
     return new cdk.aws_lambda.Function(stack, funcName, {
         code: cdk.aws_lambda.Code.fromAsset(`lib/lambdas/api/${funcName}`),

@@ -72,31 +72,21 @@ export class SLannotateApiStack extends cdk.Stack {
         //files.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFilesByUserIdLambda));
         //存在可否がわかるように、URLを返す(なければ空文字)とかでもよいかも
         //fileName.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFileByFileIdLambda));
-        //Upload FileはLambdaを介さないので、Lambdaとの紐付けはしなくてよい
-        //これもLambdaなしで行けそう
 
-        // lambdas/api/${funcName}のソースを使うので、funcNameはソースのフォルダ名と一致させる必要がある
-        const getAnnotateResultLambda = createLambda(this, 'getAnnotateResult');
-        const requestAnnotateLambda = createLambda(this, 'requestAnnotate');
         //動画の前処理の設定(MP4 to CSV, Record to DDB)
-        //import ddb table
         const table = props.table;
         const videoPreprocessLambda = new cdk.aws_lambda.Function(this, 'videoPreprocess', {
             code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/util/videoPreprocess'),
             runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
             handler: 'index.handler',
-            logRetention:  cdk.aws_logs.RetentionDays.ONE_MONTH,
+            logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
             timeout: cdk.Duration.seconds(300),
         });
-        
+
         table.grantReadWriteData(videoPreprocessLambda);
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda));
 
         //ここからAPIの各メソッド
-        annotate.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda));
-        annotate.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
-
-
         const defaultIntegrationResponsesOfCORS = {
             'method.response.header.Access-Control-Allow-Headers':
                 "'Content-Type,Authorization'",
@@ -110,140 +100,155 @@ export class SLannotateApiStack extends cdk.Stack {
             'method.response.header.Access-Control-Allow-Methods': true,
             'method.response.header.Access-Control-Allow-Origin': true,
         }
+        createGETannotate(this,annotate);
+        createPOSTannotate(this,annotate);
+        createPUTFileName(fileName, S3Role, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
+        createDELETEFileName(fileName, S3Role, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
-        fileName.addMethod('PUT', new cdk.aws_apigateway.AwsIntegration({
-            service: 's3',
-            integrationHttpMethod: 'PUT',
-            path: `${videoBucket.bucketName}/{folder}/{object}`,
-            options: {
-                credentialsRole: S3Role,
-                requestParameters: {
-                    'integration.request.header.Content-Type': 'method.request.header.Content-Type',
-                    'integration.request.path.folder': 'method.request.path.userId',
-                    'integration.request.path.object': 'method.request.path.fileName',
-
-                },
-                integrationResponses: [{
-                    statusCode: '200',
-                    responseParameters: {
-                        'method.response.header.Content-Type': 'integration.response.header.Content-Type',
-                        'method.response.header.Access-Control-Allow-Headers':
-                            "'Content-Type,Authorization'",
-                        'method.response.header.Access-Control-Allow-Methods':
-                            "'OPTIONS,POST,PUT,GET,DELETE'",
-                        'method.response.header.Access-Control-Allow-Origin': "'*'",
-                    }
-                },
-                {
-                    statusCode: '400',
-                    selectionPattern: "4\\d{2}",
-                    responseParameters: defaultIntegrationResponsesOfCORS
-                }, {
-                    statusCode: '500',
-                    selectionPattern: "5\\d{2}",
-                    responseParameters: defaultIntegrationResponsesOfCORS
-                }
-                ],
-            }
-        }),
-            {
-                requestParameters: {
-                    'method.request.header.Content-Type': true,
-                    'method.request.path.userId': true,
-                    'method.request.path.fileName': true,
-                },
-                methodResponses: [
-                    {
-                        statusCode: '200',
-                        responseParameters: {
-                            'method.response.header.Content-Type': true,
-                            'method.response.header.Access-Control-Allow-Headers': true,
-                            'method.response.header.Access-Control-Allow-Methods': true,
-                            'method.response.header.Access-Control-Allow-Origin': true,
-                        }
-                    },
-                    {
-                        statusCode: '400',
-                        responseParameters: defaultMethodResponseParametersOfCORS,
-                    },
-                    {
-                        statusCode: '500',
-                        responseParameters: defaultMethodResponseParametersOfCORS,
-                    }
-                ]
-            },
-        );
-
-        fileName.addMethod('DELETE', new cdk.aws_apigateway.AwsIntegration({
-            service: 's3',
-            integrationHttpMethod: 'DELETE',
-            path: `${videoBucket.bucketName}/{folder}/{object}`,
-            options: {
-                credentialsRole: S3Role,
-                requestParameters: {
-                    'integration.request.header.Content-Type': 'method.request.header.Content-Type',
-                    'integration.request.path.folder': 'method.request.path.userId',
-                    'integration.request.path.object': 'method.request.path.fileName',
-                },
-                integrationResponses: [{
-                    statusCode: '200',
-                    responseParameters: {
-                        'method.response.header.Content-Type': 'integration.response.header.Content-Type',
-                        'method.response.header.Access-Control-Allow-Headers':
-                            "'Content-Type,Authorization'",
-                        'method.response.header.Access-Control-Allow-Methods':
-                            "'OPTIONS,POST,PUT,GET,DELETE'",
-                        'method.response.header.Access-Control-Allow-Origin': "'*'",
-                    }
-                },
-                {
-                    statusCode: '400',
-                    selectionPattern: "4\\d{2}",
-                    responseParameters: defaultIntegrationResponsesOfCORS
-                }, {
-                    statusCode: '500',
-                    selectionPattern: "5\\d{2}",
-                    responseParameters: defaultIntegrationResponsesOfCORS
-                }
-                ],
-            }
-        }),
-            {
-                requestParameters: {
-                    'method.request.header.Content-Type': true,
-                    'method.request.path.userId': true,
-                    'method.request.path.fileName': true,
-                },
-                methodResponses: [
-                    {
-                        statusCode: '200',
-                        responseParameters: {
-                            'method.response.header.Content-Type': true,
-                            'method.response.header.Access-Control-Allow-Headers': true,
-                            'method.response.header.Access-Control-Allow-Methods': true,
-                            'method.response.header.Access-Control-Allow-Origin': true,
-                        }
-                    },
-                    {
-                        statusCode: '400',
-                        responseParameters: defaultMethodResponseParametersOfCORS,
-                    },
-                    {
-                        statusCode: '500',
-                        responseParameters: defaultMethodResponseParametersOfCORS,
-                    }
-                ]
-            },
-        );
     }
 }
+function createGETannotate(stack: cdk.Stack,resource:cdk.aws_apigateway.Resource) {
+    const getAnnotateResultLambda = createLambda(stack, 'getAnnotateResult');
+    resource.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getAnnotateResultLambda));
+}
+function createPOSTannotate(stack: cdk.Stack,resource:cdk.aws_apigateway.Resource) {
+    const requestAnnotateLambda = createLambda(stack, 'requestAnnotate');
+    resource.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
+}
+function createDELETEFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
+    fileName.addMethod('DELETE', new cdk.aws_apigateway.AwsIntegration({
+        service: 's3',
+        integrationHttpMethod: 'DELETE',
+        path: `${bucket.bucketName}/{folder}/{object}`,
+        options: {
+            credentialsRole: S3operateRole,
+            requestParameters: {
+                'integration.request.header.Content-Type': 'method.request.header.Content-Type',
+                'integration.request.path.folder': 'method.request.path.userId',
+                'integration.request.path.object': 'method.request.path.fileName',
+            },
+            integrationResponses: [{
+                statusCode: '200',
+                responseParameters: {
+                    'method.response.header.Content-Type': 'integration.response.header.Content-Type',
+                    'method.response.header.Access-Control-Allow-Headers':
+                        "'Content-Type,Authorization'",
+                    'method.response.header.Access-Control-Allow-Methods':
+                        "'OPTIONS,POST,PUT,GET,DELETE'",
+                    'method.response.header.Access-Control-Allow-Origin': "'*'",
+                }
+            },
+            {
+                statusCode: '400',
+                selectionPattern: "4\\d{2}",
+                responseParameters: integrationResponse
+            }, {
+                statusCode: '500',
+                selectionPattern: "5\\d{2}",
+                responseParameters: integrationResponse
+            }
+            ],
+        }
+    }),
+        {
+            requestParameters: {
+                'method.request.header.Content-Type': true,
+                'method.request.path.userId': true,
+                'method.request.path.fileName': true,
+            },
+            methodResponses: [
+                {
+                    statusCode: '200',
+                    responseParameters: {
+                        'method.response.header.Content-Type': true,
+                        'method.response.header.Access-Control-Allow-Headers': true,
+                        'method.response.header.Access-Control-Allow-Methods': true,
+                        'method.response.header.Access-Control-Allow-Origin': true,
+                    }
+                },
+                {
+                    statusCode: '400',
+                    responseParameters: methodResponse,
+                },
+                {
+                    statusCode: '500',
+                    responseParameters: methodResponse,
+                }
+            ]
+        },
+    );
+}
 
+function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
+    fileName.addMethod('PUT', new cdk.aws_apigateway.AwsIntegration({
+        service: 's3',
+        integrationHttpMethod: 'PUT',
+        path: `${bucket.bucketName}/{folder}/{object}`,
+        options: {
+            credentialsRole: S3operateRole,
+            requestParameters: {
+                'integration.request.header.Content-Type': 'method.request.header.Content-Type',
+                'integration.request.path.folder': 'method.request.path.userId',
+                'integration.request.path.object': 'method.request.path.fileName',
+
+            },
+            integrationResponses: [{
+                statusCode: '200',
+                responseParameters: {
+                    'method.response.header.Content-Type': 'integration.response.header.Content-Type',
+                    'method.response.header.Access-Control-Allow-Headers':
+                        "'Content-Type,Authorization'",
+                    'method.response.header.Access-Control-Allow-Methods':
+                        "'OPTIONS,POST,PUT,GET,DELETE'",
+                    'method.response.header.Access-Control-Allow-Origin': "'*'",
+                }
+            },
+            {
+                statusCode: '400',
+                selectionPattern: "4\\d{2}",
+                responseParameters: integrationResponse
+            }, {
+                statusCode: '500',
+                selectionPattern: "5\\d{2}",
+                responseParameters: integrationResponse
+            }
+            ],
+        }
+    }),
+        {
+            requestParameters: {
+                'method.request.header.Content-Type': true,
+                'method.request.path.userId': true,
+                'method.request.path.fileName': true,
+            },
+            methodResponses: [
+                {
+                    statusCode: '200',
+                    responseParameters: {
+                        'method.response.header.Content-Type': true,
+                        'method.response.header.Access-Control-Allow-Headers': true,
+                        'method.response.header.Access-Control-Allow-Methods': true,
+                        'method.response.header.Access-Control-Allow-Origin': true,
+                    }
+                },
+                {
+                    statusCode: '400',
+                    responseParameters: methodResponse,
+                },
+                {
+                    statusCode: '500',
+                    responseParameters: methodResponse,
+                }
+            ]
+        },
+    );
+}
 function createLambda(stack: cdk.Stack, funcName: string): cdk.aws_lambda.Function {
     return new cdk.aws_lambda.Function(stack, funcName, {
         code: cdk.aws_lambda.Code.fromAsset(`lib/lambdas/api/${funcName}`),
         runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
         handler: 'index.handler',
-        logRetention:  cdk.aws_logs.RetentionDays.ONE_MONTH,
+        logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
         timeout: cdk.Duration.seconds(1),
     });
 }

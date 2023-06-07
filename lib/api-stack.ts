@@ -57,15 +57,12 @@ export class SLannotateApiStack extends cdk.Stack {
                     |    |    |- {fileName} - GET:File details ✓
                     |    |    |- {fileName} - PUT:Upload File ✓
                     |    |    |- {fileName} - DELETE:DELETE File  ✓
-                    |    |    |    |- annotate - GET:Annotate result 
-                    |    |    |    |- annotate - POST:Annotate request これもいらない(アップロード時にアノテートする)
         */
         //TOCONSIDER:アップロードしてアノテートしないことはないので、アップロードされたら暗黙的に(?)処理してもよいのではないか
         const users = api.root.addResource('users');
         const userId = users.addResource('{userId}');
         const files = userId.addResource('files');
         const fileName = files.addResource('{fileName}');
-        const annotate = fileName.addResource('annotate');
 
         //TODO:Implement these methods
         //userId.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getUserByUserIdLambda));
@@ -111,7 +108,6 @@ export class SLannotateApiStack extends cdk.Stack {
         createPUTFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createDELETEFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
-        createPOSTannotate(this, annotate);
     }
 }
 

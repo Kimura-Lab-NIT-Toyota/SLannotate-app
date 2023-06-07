@@ -111,7 +111,6 @@ export class SLannotateApiStack extends cdk.Stack {
         createPUTFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createDELETEFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
-        createPOSTannotate(this, annotate);
     }
 }
 

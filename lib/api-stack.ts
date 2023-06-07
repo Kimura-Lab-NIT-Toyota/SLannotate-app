@@ -47,18 +47,18 @@ export class SLannotateApiStack extends cdk.Stack {
                 allowHeaders: cdk.aws_apigateway.Cors.DEFAULT_HEADERS,
                 statusCode: 200,
             },
-            binaryMediaTypes: ['*/*'],
+            binaryMediaTypes: ['video/*'],
         });
 
         //LambdaとAPIの紐付け
         /* ~/users -
-                    |- {userId} - GET:User details
-                    |    |- files - GET:List of files
+                    |- {userId} - GET:User details とりあえずいらないかも。(ユーザー情報をどうこうしようみたいな状況がない)
+                    |    |- files - GET:List of files ✓
                     |    |    |- {fileName} - GET:File details ✓
                     |    |    |- {fileName} - PUT:Upload File ✓
                     |    |    |- {fileName} - DELETE:DELETE File  ✓
-                    |    |    |    |- annotate - GET:Annotate result
-                    |    |    |    |- annotate - POST:Annotate request
+                    |    |    |    |- annotate - GET:Annotate result 
+                    |    |    |    |- annotate - POST:Annotate request これもいらない(アップロード時にアノテートする)
         */
         //TOCONSIDER:アップロードしてアノテートしないことはないので、アップロードされたら暗黙的に(?)処理してもよいのではないか
         const users = api.root.addResource('users');

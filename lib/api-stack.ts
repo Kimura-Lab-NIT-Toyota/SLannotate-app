@@ -355,10 +355,6 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole:
     );
 }
 
-function createPOSTannotate(stack: cdk.Stack, resource: cdk.aws_apigateway.Resource) {
-    const requestAnnotateLambda = createLambda(stack, 'requestAnnotate');
-    resource.addMethod('POST', new cdk.aws_apigateway.LambdaIntegration(requestAnnotateLambda));
-}
 
 function createLambda(stack: cdk.Stack, funcName: string): cdk.aws_lambda.Function {
     return new cdk.aws_lambda.Function(stack, funcName, {

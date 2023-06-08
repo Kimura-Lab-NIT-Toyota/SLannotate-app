@@ -73,13 +73,13 @@ export class SLannotateApiStack extends cdk.Stack {
         //動画の前処理の設定(MP4 to CSV, Record to DDB)
         const table = props.table;
         const videoPreprocessLambda = new cdk.aws_lambda.Function(this, 'videoPreprocess', {
-            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/util/videoPreprocess'),
+            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/videoPreprocess'),
             runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
             handler: 'index.handler',
             logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
             timeout: cdk.Duration.seconds(300),
         });
-        const DDBReadRole = new cdk.aws_iam.Role(this, 'SKabbitateDDBReadRoleForAPI', {
+        const DDBReadRole = new cdk.aws_iam.Role(this, 'SLannotateDDBReadRoleForAPI', {
             assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
             path: "/",
         })

@@ -112,7 +112,7 @@ export class SLannotateApiStack extends cdk.Stack {
 }
 
 function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, methodResponse: any) {
-    const tableName = process.env.TableName || "video_details_table"
+    const tableName = process.env.TABLE_NAME || "video_details_table"
     resource.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
         service: 'dynamodb',
         action: 'Query',
@@ -170,7 +170,7 @@ function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: c
     )
 }
 function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, methodResponse: any) {
-    const tableName = process.env.TableName || "video_details_table"
+    const tableName = process.env.TABLE_NAME || "video_details_table"
     fileName.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
         service: 'dynamodb',
         action: 'GetItem',

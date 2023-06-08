@@ -1,7 +1,7 @@
 import { DynamoDBClient} from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand} from "@aws-sdk/lib-dynamodb";
 export const handler =  function (event: any, context: any, callback: any) {
-    const tableName = 'video_details_table';
+    const tableName = process.env.TABLE_NEME || 'video_details_table';
     const region = process.env.REGION || 'ap-northeast-1';
 
     const key = <string> event.Records[0].s3.object.key;

@@ -52,7 +52,7 @@ export class SLannotateApiStack extends cdk.Stack {
             binaryMediaTypes: ['*/*,'],
         });
 
-        //LambdaとAPIの紐付け
+
         /* ~/users -
                     |- {userId} - GET:User details とりあえずいらないかも。(ユーザー情報をどうこうしようみたいな状況がない)
                     |    |- files - GET:List of files ✓
@@ -65,12 +65,6 @@ export class SLannotateApiStack extends cdk.Stack {
         const userId = users.addResource('{userId}');
         const files = userId.addResource('files');
         const fileName = files.addResource('{fileName}');
-
-        //TODO:Implement these methods
-        //userId.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getUserByUserIdLambda));
-        //files.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFilesByUserIdLambda));
-        //存在可否がわかるように、URLを返す(なければ空文字)とかでもよいかも
-        //fileName.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFileByFileIdLambda));
 
         const table = props.table;
         const DDBReadRole = new cdk.aws_iam.Role(this, 'SLannotateDDBReadRoleForAPI', {
@@ -340,15 +334,4 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole:
             ]
         },
     );
-}
-
-
-function createLambda(stack: cdk.Stack, funcName: string): cdk.aws_lambda.Function {
-    return new cdk.aws_lambda.Function(stack, funcName, {
-        code: cdk.aws_lambda.Code.fromAsset(`lib/lambdas/api/${funcName}`),
-        runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
-        handler: 'index.handler',
-        logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
-        timeout: cdk.Duration.seconds(1),
-    });
 }

@@ -5,7 +5,7 @@ export const handler =  function (event: any, context: any, callback: any) {
     const region = process.env.REGION || 'ap-northeast-1';
 
     const key = <string> event.Records[0].s3.object.key;
-    if (key.split('/').length != 2) {
+    if (key.split('/').length != 3) { // PATH should be {userId}/{fileType}/{fileName}
         console.log("Process exited because invalid fileName or userName. Check if they doesn't include '/'");
         return;
     } else {

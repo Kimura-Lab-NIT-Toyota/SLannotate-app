@@ -3,18 +3,20 @@ import { RemovalPolicy, StackProps, aws_cognito } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 //アプリケーションのAPIを管理するスタック。
 
-interface apiProps extends StackProps {
+interface apiProps extends StackProps {//別スタックから読み込む値を定義
     userPool: aws_cognito.UserPool;
     table: cdk.aws_dynamodb.Table;
 }
 export class SLannotateApiStack extends cdk.Stack {
-    constructor(scope: Construct, id: string, props: apiProps) {
+    public readonly videoBucket: cdk.aws_s3.Bucket;//別スタックから参照したい値をpublicで定義
+    constructor(scope: Construct, id: string, props: apiProps) {//別スタックから読み込む値を引数に追加するため、apipropsを使う
         super(scope, id, props);
 
         //アップロードされた動画を格納するバケット
         const videoBucket = new cdk.aws_s3.Bucket(this, "SLannotateVideoBucket", {
             removalPolicy: RemovalPolicy.DESTROY,
         });
+        this.videoBucket = videoBucket;
         //APIからS3を触るためのロール作成
         const S3WriteDeleteRole = new cdk.aws_iam.Role(this, "SLannotateVideoBucketWDRole", {
             assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
@@ -47,7 +49,7 @@ export class SLannotateApiStack extends cdk.Stack {
                 allowHeaders: cdk.aws_apigateway.Cors.DEFAULT_HEADERS,
                 statusCode: 200,
             },
-            binaryMediaTypes: ['video/*'],
+            binaryMediaTypes: ['*/*,'],
         });
 
         //LambdaとAPIの紐付け
@@ -70,23 +72,12 @@ export class SLannotateApiStack extends cdk.Stack {
         //存在可否がわかるように、URLを返す(なければ空文字)とかでもよいかも
         //fileName.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFileByFileIdLambda));
 
-        //動画の前処理の設定(MP4 to CSV, Record to DDB)
         const table = props.table;
-        const videoPreprocessLambda = new cdk.aws_lambda.Function(this, 'videoPreprocess', {
-            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/videoPreprocess'),
-            runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
-            handler: 'index.handler',
-            logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
-            timeout: cdk.Duration.seconds(300),
-        });
         const DDBReadRole = new cdk.aws_iam.Role(this, 'SLannotateDDBReadRoleForAPI', {
             assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
             path: "/",
         })
         table.grantReadData(DDBReadRole);
-        table.grantReadWriteData(videoPreprocessLambda);
-        videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda));
-
 
         const defaultIntegrationResponsesOfCORS = {
             'method.response.header.Access-Control-Allow-Headers':
@@ -290,7 +281,7 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole:
     fileName.addMethod('PUT', new cdk.aws_apigateway.AwsIntegration({
         service: 's3',
         integrationHttpMethod: 'PUT',
-        path: `${bucket.bucketName}/{folder}/{object}`,
+        path: `${bucket.bucketName}/{folder}/video/{object}`,
         options: {
             credentialsRole: S3operateRole,
             requestParameters: {

@@ -63,7 +63,7 @@ export class SLannotateApiStack extends cdk.Stack {
             logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
             timeout: cdk.Duration.seconds(3),
         });
-        table.grantReadWriteData(addRecordToDDBLambda);
+        table.grantWriteData(addRecordToDDBLambda);
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(addRecordToDDBLambda), { suffix: '.mp4' });
 
         const lambdaLayer = new cdk.aws_lambda.LayerVersion(this, 'SLannotate-annotateLambdaLayer', {
@@ -74,13 +74,14 @@ export class SLannotateApiStack extends cdk.Stack {
         const annotateLambda = new cdk.aws_lambda.Function(this, 'SLannotate-annotateLambda', {
             code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/annotate'),
             runtime: cdk.aws_lambda.Runtime.PYTHON_3_10,
-            handler: 'index.handler',
+            handler: 'main.handler',
             logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
             layers: [lambdaLayer],
             timeout: cdk.Duration.seconds(3),
         });
 
-        videoBucket.grantReadWrite(annotateLambda);
+        table.grantWriteData(annotateLambda);
+        videoBucket.grantRead(annotateLambda);
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(annotateLambda), { suffix: '.csv' });
 
         //動画の処理ここまで

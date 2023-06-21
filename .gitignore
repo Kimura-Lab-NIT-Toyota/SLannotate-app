@@ -8,3 +8,10 @@ node_modules
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# Python local package
+/lib/lambdas/annotate/DLutil
+
+# ML models
+/lib/lambdas/annotate/models/*
+!/lib/lambdas/annotate/models/README.md

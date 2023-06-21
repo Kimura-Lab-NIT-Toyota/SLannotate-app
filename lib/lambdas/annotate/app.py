@@ -8,7 +8,7 @@ def handler(event,context):
     s3 = boto3.resource('s3')
     bucket = s3.Bucket(event.Records[0].s3.bucket.name)
     obj = bucket.Object(event.Records[0].s3.object.key)
-    response = obj.get()    
+    response = obj.get()
     print(response.Body.read())
     # process
     predictor = KimlabSignLanguagePredict.setup(

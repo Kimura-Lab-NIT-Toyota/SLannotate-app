@@ -70,7 +70,7 @@ export class SLannotateApiStack extends cdk.Stack {
 
         const annotateLambda = new cdk.aws_lambda.DockerImageFunction(this, 'SLannotate-annotateLambdaFromDockerImage', {
             code: cdk.aws_lambda.DockerImageCode.fromImageAsset('lib/lambdas/annotate/'),
-            timeout: cdk.Duration.seconds(10),
+            timeout: cdk.Duration.seconds(900),
             memorySize: 1024,
         });
         

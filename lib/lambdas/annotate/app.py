@@ -1,8 +1,8 @@
 import boto3
-import codecs
 from dlutil.detector import KimlabSignLanguagePredict
 from dlutil.detector import from_csv
 import urllib.parse
+import io
 def handler(event,context):
     print("starting...")
     # load csv from S3
@@ -13,14 +13,12 @@ def handler(event,context):
     print(urllib.parse.unquote(event['Records'][0]['s3']['bucket']['name']))
     print(urllib.parse.unquote(event['Records'][0]['s3']['object']['key']))
     response = obj.get()
-    print(response['Body'].read())
     # process
     predictor = KimlabSignLanguagePredict.setup(
         "models/t18.pth",
         "models/KSLD1.9.static.pkl"
     )
-    output = None
-    predictor.process(from_csv(response["Body"],encoding=codecs.BOM_UTF8),output)
+    output = predictor.process(from_csv(io.StringIO(response["Body"].read().decode('utf-8')),skip_header=1))
     #TODO: save output to DDB
     print(output)
-    return output
+    return 

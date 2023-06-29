@@ -19,6 +19,6 @@ def handler(event,context):
         "models/KSLD1.9.static.pkl"
     )
     output = predictor.process(from_csv(io.StringIO(response["Body"].read().decode('utf-8')),skip_header=1))
-    #TODO: save output to DDB
+    #TODO: save output to DDB,overwrite annnotate status to 'SUCCESS'
     print(output)
     return 

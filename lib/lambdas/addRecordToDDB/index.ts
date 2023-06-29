@@ -26,7 +26,7 @@ export const handler =  function (event: any, context: any, callback: any) {
                     Item:{
                         'user_id': userId,
                         'video_id': fileName,
-                        'status': 'PROGRESS',
+                        'status': 'FAILED', //In annotate function,overwrite this to 'SUCCEESS' if annotate succeeded. And,when annotate func failed with some unexpected error, we can't change status. So default is 'FAILED'.
                         'created_at': Date.now(),
                     },
                 }));

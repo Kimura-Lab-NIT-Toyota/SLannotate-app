@@ -56,7 +56,7 @@ export class SLannotateApiStack extends cdk.Stack {
 
 
         //動画の前処理+認識。本当はスタックに切り出したいけど、依存の関係でここに書いてしまう。(循環参照を生んでしまうため)
-        const addRecordToDDBLambda = new cdk.aws_lambda.Function(this, 'SLannotate-addRecordToDDBLambda', {
+        const addRecordToDDBLambda = new cdk.aws_lambda.Function(this, 'addRecordToDDBLambda', {
             code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/addRecordToDDB'),
             runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
             handler: 'index.handler',
@@ -67,10 +67,20 @@ export class SLannotateApiStack extends cdk.Stack {
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(addRecordToDDBLambda), { suffix: '.mp4' });
 
 
+        const convertMP4toCSVLambda = new cdk.aws_lambda.Function(this, 'convertMP4toCSVLambda', {
+            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/convertMP4toCSV'),
+            runtime: cdk.aws_lambda.Runtime.PYTHON_3_10,
+            handler: 'app.handler',
+            logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
+            timeout: cdk.Duration.seconds(90),
+        });
 
-        const annotateLambda = new cdk.aws_lambda.DockerImageFunction(this, 'SLannotate-annotateLambdaFromDockerImage', {
+        videoBucket.grantReadWrite(convertMP4toCSVLambda);
+        videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(convertMP4toCSVLambda), { suffix: '.mp4' });
+
+        const annotateLambda = new cdk.aws_lambda.DockerImageFunction(this, 'annotateLambdaFromDockerImage', {
             code: cdk.aws_lambda.DockerImageCode.fromImageAsset('lib/lambdas/annotate/'),
-            timeout: cdk.Duration.seconds(900),
+            timeout: cdk.Duration.seconds(90),
             memorySize: 1024,
         });
         

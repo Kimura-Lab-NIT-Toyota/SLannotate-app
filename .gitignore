@@ -2,7 +2,16 @@
 !jest.config.js
 *.d.ts
 node_modules
+*.pkl
+*.pth
 
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# Python local package
+/lib/lambdas/annotate/DLutil
+
+# ML models
+/lib/lambdas/annotate/models/*
+!/lib/lambdas/annotate/models/README.md

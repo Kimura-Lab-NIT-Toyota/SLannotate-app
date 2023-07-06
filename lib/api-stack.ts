@@ -3,18 +3,21 @@ import { RemovalPolicy, StackProps, aws_cognito } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 //アプリケーションのAPIを管理するスタック。
 
-interface apiProps extends StackProps {
+interface apiProps extends StackProps {//別スタックから読み込む値を定義
     userPool: aws_cognito.UserPool;
     table: cdk.aws_dynamodb.Table;
 }
 export class SLannotateApiStack extends cdk.Stack {
-    constructor(scope: Construct, id: string, props: apiProps) {
+    public readonly videoBucket: cdk.aws_s3.Bucket;//別スタックから参照したい値をpublicで定義
+    constructor(scope: Construct, id: string, props: apiProps) {//別スタックから読み込む値を引数に追加するため、apipropsを使う
         super(scope, id, props);
 
         //アップロードされた動画を格納するバケット
         const videoBucket = new cdk.aws_s3.Bucket(this, "SLannotateVideoBucket", {
             removalPolicy: RemovalPolicy.DESTROY,
         });
+        this.videoBucket = videoBucket;
+        const table = props.table;
         //APIからS3を触るためのロール作成
         const S3WriteDeleteRole = new cdk.aws_iam.Role(this, "SLannotateVideoBucketWDRole", {
             assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
@@ -47,45 +50,56 @@ export class SLannotateApiStack extends cdk.Stack {
                 allowHeaders: cdk.aws_apigateway.Cors.DEFAULT_HEADERS,
                 statusCode: 200,
             },
-            binaryMediaTypes: ['video/*'],
+            binaryMediaTypes: ['*/*,'],
         });
 
-        //LambdaとAPIの紐付け
+
+
+        //動画の前処理+認識。本当はスタックに切り出したいけど、依存の関係でここに書いてしまう。(循環参照を生んでしまうため)
+        const videoPreprocessLambda = new cdk.aws_lambda.Function(this, 'videoPreprocessLambda', {
+            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/videoPreprocess'),
+            runtime: cdk.aws_lambda.Runtime.PYTHON_3_10,
+            handler: 'app.handler',
+            logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
+            timeout: cdk.Duration.seconds(10),
+        });
+
+        table.grantWriteData(videoPreprocessLambda);
+        videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda), { suffix: '.mp4' });
+
+
+        const annotateLambda = new cdk.aws_lambda.DockerImageFunction(this, 'annotateLambdaFromDockerImage', {
+            code: cdk.aws_lambda.DockerImageCode.fromImageAsset('lib/lambdas/annotate/'),
+            timeout: cdk.Duration.seconds(60),
+            memorySize: 1024,
+        });
+        
+        
+        table.grantWriteData(annotateLambda);
+        videoBucket.grantRead(annotateLambda);
+        videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(annotateLambda), { suffix: '.csv' });
+
+        //動画の処理ここまで
+
+        //API本編
         /* ~/users -
-                    |- {userId} - GET:User details とりあえずいらないかも。(ユーザー情報をどうこうしようみたいな状況がない)
-                    |    |- files - GET:List of files ✓
-                    |    |    |- {fileName} - GET:File details ✓
-                    |    |    |- {fileName} - PUT:Upload File ✓
-                    |    |    |- {fileName} - DELETE:DELETE File  ✓
+                            |- {userId} - GET:User details とりあえずいらないかも。(ユーザー情報をどうこうしようみたいな状況がない)
+                            |    |- files - GET:List of files ✓
+                            |    |    |- {fileName} - GET:File details ✓
+                            |    |    |- {fileName} - PUT:Upload File ✓
+                            |    |    |- {fileName} - DELETE:DELETE File  ✓
         */
-        //TOCONSIDER:アップロードしてアノテートしないことはないので、アップロードされたら暗黙的に(?)処理してもよいのではないか
         const users = api.root.addResource('users');
         const userId = users.addResource('{userId}');
         const files = userId.addResource('files');
         const fileName = files.addResource('{fileName}');
 
-        //TODO:Implement these methods
-        //userId.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getUserByUserIdLambda));
-        //files.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFilesByUserIdLambda));
-        //存在可否がわかるように、URLを返す(なければ空文字)とかでもよいかも
-        //fileName.addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getFileByFileIdLambda));
 
-        //動画の前処理の設定(MP4 to CSV, Record to DDB)
-        const table = props.table;
-        const videoPreprocessLambda = new cdk.aws_lambda.Function(this, 'videoPreprocess', {
-            code: cdk.aws_lambda.Code.fromAsset('lib/lambdas/util/videoPreprocess'),
-            runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
-            handler: 'index.handler',
-            logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
-            timeout: cdk.Duration.seconds(300),
-        });
-        const DDBReadRole = new cdk.aws_iam.Role(this, 'SKabbitateDDBReadRoleForAPI', {
+        const DDBReadRole = new cdk.aws_iam.Role(this, 'SLannotateDDBReadRoleForAPI', {
             assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
             path: "/",
         })
         table.grantReadData(DDBReadRole);
-        table.grantReadWriteData(videoPreprocessLambda);
-        videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda));
 
 
         const defaultIntegrationResponsesOfCORS = {
@@ -112,7 +126,7 @@ export class SLannotateApiStack extends cdk.Stack {
 }
 
 function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, methodResponse: any) {
-    const tableName = process.env.TableName || "video_details_table"
+    const tableName = process.env.TABLE_NAME || "video_details_table"
     resource.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
         service: 'dynamodb',
         action: 'Query',
@@ -170,7 +184,7 @@ function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: c
     )
 }
 function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, methodResponse: any) {
-    const tableName = process.env.TableName || "video_details_table"
+    const tableName = process.env.TABLE_NAME || "video_details_table"
     fileName.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
         service: 'dynamodb',
         action: 'GetItem',
@@ -290,7 +304,7 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole:
     fileName.addMethod('PUT', new cdk.aws_apigateway.AwsIntegration({
         service: 's3',
         integrationHttpMethod: 'PUT',
-        path: `${bucket.bucketName}/{folder}/{object}`,
+        path: `${bucket.bucketName}/{folder}/video/{object}`,
         options: {
             credentialsRole: S3operateRole,
             requestParameters: {
@@ -349,15 +363,4 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole:
             ]
         },
     );
-}
-
-
-function createLambda(stack: cdk.Stack, funcName: string): cdk.aws_lambda.Function {
-    return new cdk.aws_lambda.Function(stack, funcName, {
-        code: cdk.aws_lambda.Code.fromAsset(`lib/lambdas/api/${funcName}`),
-        runtime: cdk.aws_lambda.Runtime.NODEJS_18_X,
-        handler: 'index.handler',
-        logRetention: cdk.aws_logs.RetentionDays.ONE_MONTH,
-        timeout: cdk.Duration.seconds(1),
-    });
 }

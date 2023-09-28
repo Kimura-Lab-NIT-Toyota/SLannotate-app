@@ -34,7 +34,10 @@ export class CognitoAuthStack extends Stack {
                     aws_cognito.OAuthScope.OPENID,
                 ],
             },
-            authFlows: { adminUserPassword: true },
+            authFlows: {
+                adminUserPassword: true,
+                userSrp: true,
+            },
         });
 
         userPool.addDomain("SLannotateUserPoolDomain", {

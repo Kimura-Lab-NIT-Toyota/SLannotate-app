@@ -73,8 +73,8 @@ export class SLannotateApiStack extends cdk.Stack {
             timeout: cdk.Duration.seconds(60),
             memorySize: 1024,
         });
-        
-        
+
+
         table.grantWriteData(annotateLambda);
         videoBucket.grantRead(annotateLambda);
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(annotateLambda), { suffix: '.csv' });
@@ -116,16 +116,16 @@ export class SLannotateApiStack extends cdk.Stack {
             'method.response.header.Access-Control-Allow-Origin': true,
         }
         //ここからAPIの各メソッド
-        createGETFiles(files, DDBReadRole, defaultMethodResponseParametersOfCORS);
+        createGETFiles(files, DDBReadRole, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
-        createGETFileName(fileName, DDBReadRole, defaultMethodResponseParametersOfCORS);
+        createGETFileName(fileName, DDBReadRole, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createPUTFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createDELETEFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
     }
 }
 
-function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, methodResponse: any) {
+function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, integrationResponse: any, methodResponse: any) {
     const tableName = process.env.TABLE_NAME || "video_details_table"
     resource.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
         service: 'dynamodb',
@@ -157,7 +157,8 @@ function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: c
                             #end
                         ]
                     }`
-                }
+                },
+                responseParameters: integrationResponse
             }]
         }
     }), {
@@ -183,7 +184,7 @@ function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: c
     }
     )
 }
-function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, methodResponse: any) {
+function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, integrationResponse: any, methodResponse: any) {
     const tableName = process.env.TABLE_NAME || "video_details_table"
     fileName.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
         service: 'dynamodb',
@@ -210,7 +211,8 @@ function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole
                         "status": "$input.path('$').Item.status.S",
                         "result": $input.path('$').Item.result.L,
                       }`
-                }
+                },
+                responseParameters: integrationResponse
             }]
         }
     }), {

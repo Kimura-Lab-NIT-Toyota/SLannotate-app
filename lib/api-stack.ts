@@ -26,6 +26,11 @@ export class SLannotateApiStack extends cdk.Stack {
         videoBucket.grantWrite(S3WriteDeleteRole);
         videoBucket.grantDelete(S3WriteDeleteRole);
 
+        const S3ReadRole = new cdk.aws_iam.Role(this, "SLannotateVideoBucketReadRole", {
+            assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
+        });
+        videoBucket.grantRead(S3ReadRole);
+
         //API作成
         //authorizerを作成(auth-stackで作成したUserPoolを呼び出す)
         const userPool = props.userPool;
@@ -65,9 +70,12 @@ export class SLannotateApiStack extends cdk.Stack {
         });
 
         table.grantWriteData(videoPreprocessLambda);
+        //動画がアップロードされたら、動画の前処理を行うLambdaに投げる。DynamoDBへの記録、mp4→CSVの変換とかやってるはず。
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(videoPreprocessLambda), { suffix: '.mp4' });
 
 
+        //推論を行うLambda
+         //FIXME:このLambdaのデプロイはメチャメチャ遅い。APIの変更を加えるために本筋でないこいつに時間取られるのは辛いので、なんとか切り出したい。
         const annotateLambda = new cdk.aws_lambda.DockerImageFunction(this, 'annotateLambdaFromDockerImage', {
             code: cdk.aws_lambda.DockerImageCode.fromImageAsset('lib/lambdas/annotate/'),
             timeout: cdk.Duration.seconds(60),
@@ -75,6 +83,7 @@ export class SLannotateApiStack extends cdk.Stack {
         });
 
 
+        //Lambdaに推論結果を格納するDynamoDBへのアクセス権限を与え、S3にCSVがアップロードされる(=前処理が終わる)と、推論を行う設定。
         table.grantWriteData(annotateLambda);
         videoBucket.grantRead(annotateLambda);
         videoBucket.addEventNotification(cdk.aws_s3.EventType.OBJECT_CREATED_PUT, new cdk.aws_s3_notifications.LambdaDestination(annotateLambda), { suffix: '.csv' });
@@ -86,22 +95,25 @@ export class SLannotateApiStack extends cdk.Stack {
                             |- {userId} - GET:User details とりあえずいらないかも。(ユーザー情報をどうこうしようみたいな状況がない)
                             |    |- files - GET:List of files ✓
                             |    |    |- {fileName} - GET:File details ✓
-                            |    |    |- {fileName} - PUT:Upload File ✓
+                            |    |    |- {fileName} - PUT:Update Annotation result ✓
                             |    |    |- {fileName} - DELETE:DELETE File  ✓
+                            |    |    | - blob - PUT: Upload File ✓
+                            |    |    | - blob - GET: Fetch File  ✓
         */
-        const users = api.root.addResource('users');
-        const userId = users.addResource('{userId}');
-        const files = userId.addResource('files');
-        const fileName = files.addResource('{fileName}');
-
 
         const DDBReadRole = new cdk.aws_iam.Role(this, 'SLannotateDDBReadRoleForAPI', {
             assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
             path: "/",
         })
+
+        const DDBWriteRole = new cdk.aws_iam.Role(this, 'SLannotateDDBRWRoleForAPI', {
+            assumedBy: new cdk.aws_iam.ServicePrincipal("apigateway.amazonaws.com"),
+        });
         table.grantReadData(DDBReadRole);
+        table.grantWriteData(DDBWriteRole);
 
 
+        //CORSの設定。Originの異なるサイトからアクセスするとき必要で、今回のユースケースでは常に必要。。
         const defaultIntegrationResponsesOfCORS = {
             'method.response.header.Access-Control-Allow-Headers':
                 "'Content-Type,Authorization'",
@@ -116,11 +128,20 @@ export class SLannotateApiStack extends cdk.Stack {
             'method.response.header.Access-Control-Allow-Origin': true,
         }
         //ここからAPIの各メソッド
+        //resources
+        const users = api.root.addResource('users');
+        const userId = users.addResource('{userId}');
+        const files = userId.addResource('files');
         createGETFiles(files, DDBReadRole, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
+        const fileName = files.addResource('{fileName}');
         createGETFileName(fileName, DDBReadRole, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
-        createPUTFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
+        createPUTFileName(fileName, DDBWriteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createDELETEFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
+
+        const fileBlob = fileName.addResource('blob');
+        createPUTFileBlob(fileBlob, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
+        createGETFileBlob(fileBlob, S3ReadRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
     }
 }
@@ -152,7 +173,8 @@ function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: c
                                 "userId": "$elem.user_id.S",
                                 "videoId": "$elem.video_id.S",
                                 "status": "$elem.status.S",
-                                "result": "$elem.result.L",
+                                "proposed": "$elem.proposed.L",
+                                "result": "$elem.result.L"
                             }#if($foreach.hasNext),#end
                             #end
                         ]
@@ -165,12 +187,7 @@ function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: c
         methodResponses: [
             {
                 statusCode: '200',
-                responseParameters: {
-                    'method.response.header.Content-Type': true,
-                    'method.response.header.Access-Control-Allow-Headers': true,
-                    'method.response.header.Access-Control-Allow-Methods': true,
-                    'method.response.header.Access-Control-Allow-Origin': true,
-                }
+                responseParameters: methodResponse
             },
             {
                 statusCode: '400',
@@ -210,6 +227,7 @@ function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole
                     'application/json': `{
                         "status": "$input.path('$').Item.status.S",
                         "result": $input.path('$').Item.result.L,
+                        "proposed": $input.path('$').Item.proposed.L,
                       }`
                 },
                 responseParameters: integrationResponse
@@ -219,12 +237,7 @@ function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole
         methodResponses: [
             {
                 statusCode: '200',
-                responseParameters: {
-                    'method.response.header.Content-Type': true,
-                    'method.response.header.Access-Control-Allow-Headers': true,
-                    'method.response.header.Access-Control-Allow-Methods': true,
-                    'method.response.header.Access-Control-Allow-Origin': true,
-                }
+                responseParameters: methodResponse
             },
             {
                 statusCode: '400',
@@ -238,11 +251,68 @@ function createGETFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole
     }
     )
 }
+
+function createPUTFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
+    const tableName = process.env.TABLE_NAME || "video_details_table"
+    fileName.addMethod('PUT', new cdk.aws_apigateway.AwsIntegration({
+        service: 'dynamodb',
+        action: 'UpdateItem',
+        options: {
+            credentialsRole: DDBoperateRole,
+            requestTemplates: {
+                'application/json': JSON.stringify({
+                    "Key": {
+                        "user_id": {
+                            "S": "$input.params('userId')"
+                        },
+                        "video_id": {
+                            "S": "$input.params('fileName')"
+                        }},
+                    "TableName": `${tableName}`,
+                    
+                    "UpdateExpression": "SET result = :result",
+                    "ExpressionAttributeValues": {
+                        ":result": {
+                            "S": "$input.path('$.result')"
+                        }
+                    }
+                })
+            },
+            integrationResponses: [{
+                statusCode: '200',
+                responseTemplates: {
+                    'application/json': `{
+                        "status": "success",
+                        "message": "Annotation result updated successfully"
+                    }`
+                },
+                responseParameters: integrationResponse
+            }]
+        }
+    }), {
+        methodResponses: [
+            {
+                statusCode: '200',
+                responseParameters: methodResponse
+            },
+            {
+                statusCode: '400',
+                responseParameters: methodResponse,
+            },
+            {
+                statusCode: '500',
+                responseParameters: methodResponse,
+            }
+        ]
+    }
+    );
+}
+
 function createDELETEFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
     fileName.addMethod('DELETE', new cdk.aws_apigateway.AwsIntegration({
         service: 's3',
         integrationHttpMethod: 'DELETE',
-        path: `${bucket.bucketName}/{folder}/{object}`,
+        path: `${bucket.bucketName}/{folder}/video/{object}`,
         options: {
             credentialsRole: S3operateRole,
             requestParameters: {
@@ -252,14 +322,7 @@ function createDELETEFileName(fileName: cdk.aws_apigateway.Resource, S3operateRo
             },
             integrationResponses: [{
                 statusCode: '200',
-                responseParameters: {
-                    'method.response.header.Content-Type': 'integration.response.header.Content-Type',
-                    'method.response.header.Access-Control-Allow-Headers':
-                        "'Content-Type,Authorization'",
-                    'method.response.header.Access-Control-Allow-Methods':
-                        "'OPTIONS,POST,PUT,GET,DELETE'",
-                    'method.response.header.Access-Control-Allow-Origin': "'*'",
-                }
+                responseParameters: integrationResponse
             },
             {
                 statusCode: '400',
@@ -282,12 +345,7 @@ function createDELETEFileName(fileName: cdk.aws_apigateway.Resource, S3operateRo
             methodResponses: [
                 {
                     statusCode: '200',
-                    responseParameters: {
-                        'method.response.header.Content-Type': true,
-                        'method.response.header.Access-Control-Allow-Headers': true,
-                        'method.response.header.Access-Control-Allow-Methods': true,
-                        'method.response.header.Access-Control-Allow-Origin': true,
-                    }
+                    responseParameters: methodResponse
                 },
                 {
                     statusCode: '400',
@@ -302,10 +360,10 @@ function createDELETEFileName(fileName: cdk.aws_apigateway.Resource, S3operateRo
     );
 }
 
-function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
-    fileName.addMethod('PUT', new cdk.aws_apigateway.AwsIntegration({
+function createGETFileBlob(fileBlob: cdk.aws_apigateway.Resource, S3operateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
+    fileBlob.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
         service: 's3',
-        integrationHttpMethod: 'PUT',
+        integrationHttpMethod: 'GET',
         path: `${bucket.bucketName}/{folder}/video/{object}`,
         options: {
             credentialsRole: S3operateRole,
@@ -317,14 +375,7 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole:
             },
             integrationResponses: [{
                 statusCode: '200',
-                responseParameters: {
-                    'method.response.header.Content-Type': 'integration.response.header.Content-Type',
-                    'method.response.header.Access-Control-Allow-Headers':
-                        "'Content-Type,Authorization'",
-                    'method.response.header.Access-Control-Allow-Methods':
-                        "'OPTIONS,POST,PUT,GET,DELETE'",
-                    'method.response.header.Access-Control-Allow-Origin': "'*'",
-                }
+                responseParameters: integrationResponse
             },
             {
                 statusCode: '400',
@@ -347,12 +398,60 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, S3operateRole:
             methodResponses: [
                 {
                     statusCode: '200',
-                    responseParameters: {
-                        'method.response.header.Content-Type': true,
-                        'method.response.header.Access-Control-Allow-Headers': true,
-                        'method.response.header.Access-Control-Allow-Methods': true,
-                        'method.response.header.Access-Control-Allow-Origin': true,
-                    }
+                    responseParameters: methodResponse
+                },
+                {
+                    statusCode: '400',
+                    responseParameters: methodResponse,
+                },
+                {
+                    statusCode: '500',
+                    responseParameters: methodResponse,
+                }
+            ]
+        },
+    );
+}
+
+function createPUTFileBlob(fileBlob: cdk.aws_apigateway.Resource, S3operateRole: cdk.aws_iam.Role, bucket: cdk.aws_s3.Bucket, integrationResponse: any, methodResponse: any) {
+    fileBlob.addMethod('PUT', new cdk.aws_apigateway.AwsIntegration({
+        service: 's3',
+        integrationHttpMethod: 'PUT',
+        path: `${bucket.bucketName}/{folder}/video/{object}`,
+        options: {
+            credentialsRole: S3operateRole,
+            requestParameters: {
+                'integration.request.header.Content-Type': 'method.request.header.Content-Type',
+                'integration.request.path.folder': 'method.request.path.userId',
+                'integration.request.path.object': 'method.request.path.fileName',
+
+            },
+            integrationResponses: [{
+                statusCode: '200',
+                responseParameters: integrationResponse
+            },
+            {
+                statusCode: '400',
+                selectionPattern: "4\\d{2}",
+                responseParameters: integrationResponse
+            }, {
+                statusCode: '500',
+                selectionPattern: "5\\d{2}",
+                responseParameters: integrationResponse
+            }
+            ],
+        }
+    }),
+        {
+            requestParameters: {
+                'method.request.header.Content-Type': true,
+                'method.request.path.userId': true,
+                'method.request.path.fileName': true,
+            },
+            methodResponses: [
+                {
+                    statusCode: '200',
+                    responseParameters: methodResponse
                 },
                 {
                     statusCode: '400',

@@ -40,14 +40,16 @@ def handler(event, context):
             # sort key
             'video_id':  key
         },
-        UpdateExpression='SET #status = :success,#result = :result',
+        UpdateExpression='SET #status = :status, proposed = :proposed, #result = :result',
         ExpressionAttributeNames={
             '#status': 'status',
-            '#result': 'result'
+            '#result': 'result',
+            '#proposed' : 'proposed'
         },
         ExpressionAttributeValues={
-            ':success': 'SUCCESS',
-            ':result': output.tolist()
+            ':status': 'UNVERIFIED',
+            ':proposed': output.tolist(),
+            ':result': 'result is here' #TODO 候補の一覧から一番可能性の高いものを選んで暫定的な解とする
         })
 
     # TODO: save output to DDB,overwrite annnotate status to 'SUCCESS'

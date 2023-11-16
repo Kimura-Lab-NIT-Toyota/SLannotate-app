@@ -135,6 +135,7 @@ export class SLannotateApiStack extends cdk.Stack {
         createGETFiles(files, DDBReadRole, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
         const fileName = files.addResource('{fileName}');
+        //FIXME 殆どVTLで書かれているけど、メンテしづらい&デバッグしづらいといいことがないので、Lambdaで書いたほうが良い。
         createGETFileName(fileName, DDBReadRole, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createPUTFileName(fileName, DDBWriteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createDELETEFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
@@ -260,7 +261,8 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole
         options: {
             credentialsRole: DDBoperateRole,
             requestTemplates: {
-                'application/json': JSON.stringify({
+                //VTL(#foreachみたいなやつ)を書くとJSONの形式でなくなるので、JSON.stringifyは使えない。
+                'application/json': `{
                     "Key": {
                         "user_id": {
                             "S": "$input.params('userId')"
@@ -268,26 +270,46 @@ function createPUTFileName(fileName: cdk.aws_apigateway.Resource, DDBoperateRole
                         "video_id": {
                             "S": "$input.params('fileName')"
                         }},
-                    "TableName": `${tableName}`,
+                    "TableName": "${tableName}",
                     
-                    "UpdateExpression": "SET result = :result",
+                    "UpdateExpression": "SET #result = :result",
+                    "ExpressionAttributeNames": {
+                        "#result": "result"
+                    },
                     "ExpressionAttributeValues": {
                         ":result": {
-                            "S": "$input.path('$.result')"
+                            "L": [
+                                #foreach($elem in $input.path('$.result'))
+                                {"S": "$elem"}
+                                #if($foreach.hasNext),#end
+                                #end
+                            ]
                         }
-                    }
-                })
+                        }
+                }`
             },
             integrationResponses: [{
                 statusCode: '200',
+                //FIXME:resultが正しく出力されていない。
                 responseTemplates: {
                     'application/json': `{
                         "status": "success",
-                        "message": "Annotation result updated successfully"
+                        "message": "Annotation result updated successfully",
+                        "result": $input.path('$.result')
                     }`
                 },
                 responseParameters: integrationResponse
-            }]
+            },
+            {
+                statusCode: '400',
+                responseTemplates: {
+                    'application/json': `{
+                        "status": "error",
+                        "message": "Bad Request"
+                }`
+            },
+            }
+        ]
         }
     }), {
         methodResponses: [

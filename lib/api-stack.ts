@@ -147,6 +147,8 @@ export class SLannotateApiStack extends cdk.Stack {
     }
 }
 
+//TODO:ページネーションしてない。デフォルトの上限が何個か知らないが、ある程度多いし過去の動画見れなくてもそう困らないので実装してない。
+//一定以上ファイルが増えると見れなくなるので、余裕があればやっておくとよい。nextTokenを出すようにするだけのはず。
 function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: cdk.aws_iam.Role, integrationResponse: any, methodResponse: any) {
     const tableName = process.env.TABLE_NAME || "video_details_table"
     resource.addMethod('GET', new cdk.aws_apigateway.AwsIntegration({
@@ -165,7 +167,10 @@ function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: c
             },
             integrationResponses: [{
                 statusCode: '200',
-                responseTemplates: {//To remove attribute(like "S" or "N"), marshal with VTL.
+                responseTemplates: {//To remove attribute(like "S" or "N"), marshal with VTL.VTL is shit,so should replace
+                //NOTE:#if($foreach.hasNext),#endの部分は、"if foreach has next items output ',' otherwise do nothing."という意味。
+                //つまり、配列の区切りとしてカンマをつけ、最後の要素の後ろにはカンマをつけないようにするためのもの。
+                //VTL本当に辛いのでASAPでLambdaに変えると良いです。時間無いのでやってませんが。
                     'application/json': `
                     #set($input = $input.path('$'))
                     {
@@ -175,7 +180,12 @@ function createGETFiles(resource: cdk.aws_apigateway.Resource, DDBoperateRole: c
                                 "videoId": "$elem.video_id.S",
                                 "status": "$elem.status.S",
                                 "proposed": "$elem.proposed.L",
-                                "result": "$elem.result.L"
+                                "result": [
+                                    #foreach($r in $elem.result.L)
+                                        "$r.S"
+                                    #if($foreach.hasNext),#end
+                                    #end
+                                ] 
                             }#if($foreach.hasNext),#end
                             #end
                         ]

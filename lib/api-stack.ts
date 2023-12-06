@@ -129,18 +129,18 @@ export class SLannotateApiStack extends cdk.Stack {
         }
         //ここからAPIの各メソッド
         //resources
-        const users = api.root.addResource('users');
-        const userId = users.addResource('{userId}');
-        const files = userId.addResource('files');
+        const users = api.root.addResource('users');// /users
+        const userId = users.addResource('{userId}');// /users/{userId}
+        const files = userId.addResource('files'); // /users/{userId}/files
         createGETFiles(files, DDBReadRole, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
-        const fileName = files.addResource('{fileName}');
+        const fileName = files.addResource('{fileName}'); // /users/{userId}/files/{fileName}
         //FIXME 殆どVTLで書かれているけど、メンテしづらい&デバッグしづらいといいことがないので、Lambdaで書いたほうが良い。
         createGETFileName(fileName, DDBReadRole, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createPUTFileName(fileName, DDBWriteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createDELETEFileName(fileName, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 
-        const fileBlob = fileName.addResource('blob');
+        const fileBlob = fileName.addResource('blob'); // /users/{userId}/files/{fileName}/blob
         createPUTFileBlob(fileBlob, S3WriteDeleteRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
         createGETFileBlob(fileBlob, S3ReadRole, videoBucket, defaultIntegrationResponsesOfCORS, defaultMethodResponseParametersOfCORS);
 

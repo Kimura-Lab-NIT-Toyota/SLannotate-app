@@ -1,3 +1,6 @@
+## Docs
+https://www.notion.so/SLannotate-app-f723cd8f3d5a42ffbcc2ad42682f0001
+
 ## For admin
 - ユーザー自身でアカウント作成(self-signup)はできないよう設定してあります。AWSコンソール→Cognito→UserPool→ユーザーを作成で、ユーザーを発行し配る形式で運用を行ってください。
 # SLannotate-app
